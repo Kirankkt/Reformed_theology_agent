@@ -1,67 +1,143 @@
+# app_theology.py
+
+import os
+import sys
 import streamlit as st
+import warnings
+warnings.filterwarnings("ignore", category=SyntaxWarning)
+
+# 1. Set environment variables from Streamlit secrets
+if "OPENAI_API_KEY" in st.secrets:
+    os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
+else:
+    st.error("OpenAI API key not found in secrets.")
+
+if "SERPER_API_KEY" in st.secrets:
+    os.environ["SERPER_API_KEY"] = st.secrets["SERPER_API_KEY"]
+else:
+    st.error("Serper Dev API key not found in secrets.")
+
+# 2. Import pysqlite3 if needed (only if you were using a Chroma DB setup, optional)
+try:
+    import pysqlite3
+    sys.modules["sqlite3"] = pysqlite3
+except ImportError:
+    # If not needed, this can be ignored
+    pass
+
+# 3. Import other libraries after environment setup
+import logging
 import openai
 from crewai import Crew, Task, Agent
 from crewai_tools import SerperDevTool
 from langchain_openai import ChatOpenAI as OpenAI_LLM
 
-# Access the secrets stored in Streamlit's cloud environment
-openai.api_key = st.secrets["OPENAI_API_KEY"]
-serper_api_key = st.secrets["SERPER_API_KEY"]
-
-# Create the LLM
-llm = OpenAI_LLM(
-    model="gpt-3.5-turbo", 
-    temperature=0.0,
-    max_tokens=800,
+# 4. Configure logging
+logging.basicConfig(
+    level=logging.INFO, 
+    format='%(asctime)s - %(levelname)s: %(message)s',
+    handlers=[
+        logging.FileHandler("theology_output.log"),
+        logging.StreamHandler(sys.stdout)
+    ]
 )
 
-# Tools (now using the secret API key)
-search = SerperDevTool(api_key=serper_api_key)
+def create_theology_crew(user_question: str):
+    """
+    Create a theology-focused Crew that uses a Reformed Scholastic Theology agent
+    and responds to the user's question following the strict scholarly guidelines.
+    """
+    openai_api_key = os.environ.get('OPENAI_API_KEY')
+    serper_api_key = os.environ.get('SERPER_API_KEY')
 
-# Create the agent with stricter, classical Reformed scholastic prompt constraints
-theology_agent = Agent(
-    llm=llm,
-    role="Reformed Scholastic Theology Assistant",
-    goal=(
-        "Provide a scholarly, detailed theological response strictly from a classical Reformed scholastic perspective. "
-        "Avoid modern evangelical websites. Use only magisterial confessions, classical Reformed scholastics, "
-        "and classical resources (like PRDL) for references."
-    ),
-    backstory=(
-        "You are a Reformed scholastic theologian well-versed in the works of Calvin, Turretin, Bavinck, "
-        "the Princeton theologians, and other classical Reformed sources. You have access to Greek/Hebrew lexicons."
-    ),
-    allow_delegation=False,
-    tools=[search],
-    verbose=1,
-)
+    if not openai_api_key or not serper_api_key:
+        raise ValueError("Missing API keys in environment variables.")
 
-# Streamlit UI
-st.title("Reformed Scholastic Theology Q&A")
-st.write("Ask a question about Reformed theology and receive a response grounded in classical Reformed scholasticism.")
+    # Create the LLM
+    llm = OpenAI_LLM(
+        model="gpt-4",
+        temperature=0.0,
+        max_tokens=800,
+    )
 
-user_question = st.text_input("Your Question:", value="What does the Bible teach about justification by faith?")
-ask_button = st.button("Ask")
+    # Create the search tool
+    search_tool = SerperDevTool(api_key=serper_api_key)
 
-if ask_button and user_question.strip():
-    # Dynamically create the task based on user input
-    task = Task(
+    # Define the theology agent with strict Reformed Scholastic constraints
+    theology_agent = Agent(
+        llm=llm,
+        role="Reformed Scholastic Theology Assistant",
+        goal=(
+            "Provide a scholarly, detailed theological response strictly from a classical Reformed scholastic perspective. "
+            "Avoid modern evangelical websites. Use only magisterial confessions, classical Reformed scholastics, "
+            "and classical resources (like PRDL) for references."
+        ),
+        backstory=(
+            "You are a Reformed scholastic theologian steeped in the works of Calvin, Turretin, Bavinck, Hodge, Warfield, "
+            "Vos, and other classical Reformed sources, as well as classical scholasticism including Aquinas. You have access "
+            "to Greek/Hebrew lexicons and can provide rigorous, historical, theological responses."
+        ),
+        allow_delegation=False,
+        tools=[search_tool],
+        verbose=1,
+    )
+
+    theology_task = Task(
         description=(
-            f"Provide a comprehensive theological response to the question:\n\n'{user_question}'\n\n"
+            f"Provide a comprehensive theological response to the following question:\n\n"
+            f"'{user_question}'\n\n"
             "Requirements:\n"
             "- Strictly classical Reformed scholastic perspective.\n"
             "- Include quotes from classical theologians (Calvin, Turretin, Bavinck, Hodge, Warfield).\n"
             "- Provide Greek/Hebrew insights as relevant.\n"
             "- Provide references to classical and magisterial resources (e.g., PRDL).\n"
-            "- Avoid modern popular evangelical websites (e.g., no Desiring God, Ligonier, etc.).\n"
+            "- Avoid modern popular evangelical websites.\n"
         ),
         expected_output="A magisterial, scholastic response from classical Reformed sources.",
         output_file=None,
         agent=theology_agent,
     )
 
-    crew = Crew(agents=[theology_agent], tasks=[task], verbose=1)
-    results = crew.kickoff()
-    
-    st.markdown("### Scholastic Response:")
-    st.write(results[0])
+    crew = Crew(
+        agents=[theology_agent],
+        tasks=[theology_task],
+        verbose=1
+    )
+
+    return crew
+
+def run_theology_search(user_question: str):
+    """
+    Run the theological search/response generation process and return the text result.
+    """
+    try:
+        logging.info("Initiating theological query")
+        crew = create_theology_crew(user_question)
+        results = crew.kickoff()
+        logging.info("Theological query completed")
+
+        return results
+    except Exception as e:
+        logging.error(f"Error during theological search: {e}", exc_info=True)
+        return None
+
+def main():
+    # Set Streamlit page config
+    st.set_page_config(page_title="Reformed Scholastic Theology Q&A", layout="wide")
+    st.title("📜 Reformed Scholastic Theology Q&A")
+
+    st.write("Ask a question about Reformed theology and receive a response grounded in classical Reformed scholasticism.")
+
+    user_question = st.text_input("Your Theological Question:", value="What does the Bible teach about justification by faith?")
+    if st.button("Ask"):
+        with st.spinner("Consulting classical Reformed scholastic sources..."):
+            results = run_theology_search(user_question)
+            if results is not None and len(results) > 0:
+                st.success("✅ Response generated!")
+                with st.expander("📜 Scholastic Response"):
+                    st.write(results[0])
+            else:
+                st.warning("⚠️ No response generated. Please try again or refine your question.")
+
+if __name__ == "__main__":
+    main()
