@@ -1,12 +1,10 @@
-# app_theology.py
-
 import os
 import sys
 import streamlit as st
 import warnings
 warnings.filterwarnings("ignore", category=SyntaxWarning)
 
-# 1. Set environment variables from Streamlit secrets
+# Set environment variables from secrets
 if "OPENAI_API_KEY" in st.secrets:
     os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
 else:
@@ -17,22 +15,20 @@ if "SERPER_API_KEY" in st.secrets:
 else:
     st.error("Serper Dev API key not found in secrets.")
 
-# 2. Import pysqlite3 if needed (only if you were using a Chroma DB setup, optional)
+os.environ["CHROMA_DB_IMPL"] = "duckdb+parquet"
+
 try:
     import pysqlite3
     sys.modules["sqlite3"] = pysqlite3
 except ImportError:
-    # If not needed, this can be ignored
     pass
 
-# 3. Import other libraries after environment setup
 import logging
 import openai
 from crewai import Crew, Task, Agent
 from crewai_tools import SerperDevTool
 from langchain_openai import ChatOpenAI as OpenAI_LLM
 
-# 4. Configure logging
 logging.basicConfig(
     level=logging.INFO, 
     format='%(asctime)s - %(levelname)s: %(message)s',
@@ -50,7 +46,7 @@ def create_theology_crew(user_question: str):
         raise ValueError("Missing API keys in environment variables.")
 
     llm = OpenAI_LLM(
-        model="gpt-3.5-turbo",
+        model="gpt-3.5-turbo", # using a cheaper model for cost efficiency
         temperature=0.0,
         max_tokens=800,
     )
@@ -87,8 +83,7 @@ def create_theology_crew(user_question: str):
             "- Avoid modern popular evangelical websites.\n"
         ),
         expected_output="A magisterial, scholastic response from classical Reformed sources.",
-        # Instead of None, we set output_file to an empty string
-        output_file="",
+        output_file="",  # Just an empty string to avoid the NoneType error
         agent=theology_agent,
     )
 
@@ -100,42 +95,50 @@ def create_theology_crew(user_question: str):
 
     return crew
 
-
 def run_theology_search(user_question: str):
-    """
-    Run the theological search/response generation process and return the text result.
-    """
     try:
         logging.info("Initiating theological query")
         crew = create_theology_crew(user_question)
         results = crew.kickoff()
         logging.info("Theological query completed")
-
         return results
     except Exception as e:
         logging.error(f"Error during theological search: {e}", exc_info=True)
         return None
 
 def main():
-    # Set Streamlit page config
     st.set_page_config(page_title="Reformed Scholastic Theology Q&A", layout="wide")
     st.title("📜 Reformed Scholastic Theology Q&A")
 
     st.write("Ask a question about Reformed theology and receive a response grounded in classical Reformed scholasticism.")
 
-    user_question = st.text_input("Your Theological Question:", value="What does the Bible teach about justification by faith?")
+    user_question = st.text_input("Your Theological Question:", value="What is supralapsarianism?")
     if st.button("Ask"):
         with st.spinner("Consulting classical Reformed scholastic sources..."):
             results = run_theology_search(user_question)
-            if results:
-                st.success("✅ Response generated!")
-                # Check if there's an attribute like 'final' or 'output'
-                # This depends on crewai's documentation.
-                # Let's assume results is a CrewOutput with a `final` attribute:
-                st.write(results.final)
+
+            # Show the raw CrewOutput for debugging
+            with st.expander("📄 Raw CrewOutput"):
+                st.write(results)
+
+            if results and results.tasks:
+                # Try common attributes to find the final answer text
+                task_output = results.tasks[0]
+                final_answer = None
+                for attr in ['raw', 'result', 'output', 'response']:
+                    if hasattr(task_output, attr):
+                        final_answer = getattr(task_output, attr)
+                        if final_answer:
+                            break
+
+                if final_answer:
+                    st.success("✅ Response generated!")
+                    # Display the final answer directly as text
+                    st.write(final_answer)
+                else:
+                    st.warning("⚠️ No recognizable output found in the task. Check the raw output above.")
             else:
                 st.warning("⚠️ No response generated. Please try again or refine your question.")
-
 
 if __name__ == "__main__":
     main()
