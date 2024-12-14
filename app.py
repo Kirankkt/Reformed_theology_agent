@@ -1,4 +1,4 @@
-# app.py
+# app_crewai.py
 
 import os
 import sys
@@ -6,7 +6,7 @@ import streamlit as st
 import warnings
 warnings.filterwarnings("ignore", category=SyntaxWarning)
 
-# Set environment variables from Streamlit secrets
+# 2. Set environment variables from Streamlit secrets
 if "OPENAI_API_KEY" in st.secrets:
     os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
 else:
@@ -17,21 +17,24 @@ if "SERPER_API_KEY" in st.secrets:
 else:
     st.error("Serper Dev API key not found in secrets.")
 
-# Optional: If you were using Chroma DB or related features
+# 3. Set Chroma to use DuckDB to avoid sqlite3 dependency
 os.environ["CHROMA_DB_IMPL"] = "duckdb+parquet"
 
+# 4. Import pysqlite3 and override the default sqlite3 if available
 try:
     import pysqlite3
     sys.modules["sqlite3"] = pysqlite3
 except ImportError:
-    pass
+    st.warning("pysqlite3 is not installed. Proceeding without overriding sqlite3.")
 
+# 5. Import other libraries
 import logging
 import openai
 from crewai import Crew, Task, Agent
 from crewai_tools import SerperDevTool
 from langchain_openai import ChatOpenAI as OpenAI_LLM
 
+# 6. Configure logging
 logging.basicConfig(
     level=logging.INFO, 
     format='%(asctime)s - %(levelname)s: %(message)s',
@@ -48,15 +51,15 @@ def create_theology_crew(user_question: str):
     if not openai_api_key or not serper_api_key:
         raise ValueError("Missing API keys in environment variables.")
 
-    # Using gpt-3.5-turbo for cost efficiency and potentially faster responses
     llm = OpenAI_LLM(
-        model="gpt-3.5-turbo",
+        model="gpt-3.5-turbo", 
         temperature=0.0,
         max_tokens=800,
     )
 
     search_tool = SerperDevTool(api_key=serper_api_key)
 
+    # Refined agent prompt remains the same
     theology_agent = Agent(
         llm=llm,
         role="Reformed Scholastic Theology Assistant",
@@ -68,26 +71,31 @@ def create_theology_crew(user_question: str):
         backstory=(
             "You are a Reformed scholastic theologian steeped in the works of Calvin, Turretin, Bavinck, Hodge, Warfield, "
             "Vos, and other classical Reformed sources, as well as classical scholasticism including Aquinas. You have access "
-            "to Greek/Hebrew lexicons and can provide rigorous, historical, theological responses."
+            "to Greek/Hebrew lexicons (e.g., BDAG for Greek, HALOT for Hebrew) and can provide rigorous, historical, theological responses."
         ),
         allow_delegation=False,
         tools=[search_tool],
         verbose=1,
     )
 
+    # Updated instructions in the theology_task description
     theology_task = Task(
         description=(
             f"Provide a comprehensive theological response to the following question:\n\n"
             f"'{user_question}'\n\n"
             "Requirements:\n"
             "- Strictly classical Reformed scholastic perspective.\n"
-            "- Include quotes from classical theologians (Calvin, Turretin, Bavinck, Hodge, Warfield).\n"
-            "- Provide Greek/Hebrew word tranlations and  insights as relevant to teh context.COnsider including this almost always\n"
-            "- Provide references to classical and magisterial resources (e.g., PRDL).\n"
-            "- Avoid modern popular evangelical websites.\n"
+            "- Include direct quotes (with citations) from classical Reformed theologians (e.g., Calvin's Institutes, Turretin's Institutes, "
+            "  Bavinck's Reformed Dogmatics, Hodge's Systematic Theology, Warfield's works).\n"
+            "- Provide Greek/Hebrew lexical insights (e.g., define and explain key Greek terms using BDAG, Hebrew terms using HALOT) as relevant.\n"
+            "- Provide references to classical and magisterial resources (e.g., the Westminster Confession of Faith, the Three Forms of Unity) "
+            "  and to recognized repositories (e.g., PRDL: https://www.prdl.org/)\n"
+            "- Avoid modern popular evangelical websites (no Desiring God, no Ligonier, etc.).\n"
+            "- Emphasize the original languages for key doctrinal terms.\n"
+            "- Include links to classical texts where possible (e.g., PRDL pages, digitized editions of classical works)."
         ),
-        expected_output="A magisterial, scholastic response from classical Reformed sources.",
-        output_file="",  # Use empty string instead of None
+        expected_output="A magisterial, scholastic response from classical Reformed sources, with Greek/Hebrew terms and scholarly citations.",
+        output_file="",  # keep as empty string to avoid NoneType error
         agent=theology_agent,
     )
 
@@ -116,37 +124,22 @@ def main():
 
     st.write("Ask a question about Reformed theology and receive a response grounded in classical Reformed scholasticism.")
 
-    user_question = st.text_input("Your Theological Question:", value="What does the Bible teach about justification by faith?")
+    user_question = st.text_input("Your Theological Question:", value="What does supralapsarianism entail in Reformed theology?")
     if st.button("Ask"):
         with st.spinner("Consulting classical Reformed scholastic sources..."):
             results = run_theology_search(user_question)
 
-            # Show the raw CrewOutput for debugging
             with st.expander("📄 Raw CrewOutput"):
                 st.write(results)
 
             if results:
-                # Attempt to access tasks_output instead of tasks
-                tasks_output = getattr(results, 'tasks_output', None)
-                if tasks_output and len(tasks_output) > 0:
-                    first_task_output = tasks_output[0]
-
-                    # Try common attributes to find the final textual answer
-                    final_answer = None
-                    for attr in ['raw', 'result', 'output', 'response']:
-                        if hasattr(first_task_output, attr):
-                            candidate = getattr(first_task_output, attr)
-                            if candidate and isinstance(candidate, str) and candidate.strip():
-                                final_answer = candidate.strip()
-                                break
-
-                    if final_answer:
-                        st.success("✅ Response generated!")
-                        st.write(final_answer)
-                    else:
-                        st.warning("⚠️ No recognizable textual output found in the task. Check the raw output above.")
+                # Try to get text from results
+                final_answer = getattr(results, 'raw', getattr(results, 'result', str(results)))
+                if final_answer:
+                    st.success("✅ Response generated!")
+                    st.write(final_answer)
                 else:
-                    st.warning("⚠️ No tasks_output available. Check the raw output above.")
+                    st.warning("⚠️ Could not find text output in CrewOutput. Check Raw CrewOutput above.")
             else:
                 st.warning("⚠️ No response generated. Please try again or refine your question.")
 
