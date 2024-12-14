@@ -2,9 +2,6 @@ langchain
 streamlit
 crewai
 crewai_tools
-pysqlite3-binary
 requests
-openpyxl
-duckdb
 openai
 langchain-community
