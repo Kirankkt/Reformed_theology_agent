@@ -10,7 +10,7 @@ serper_api_key = st.secrets["SERPER_API_KEY"]
 
 # Create the LLM
 llm = OpenAI_LLM(
-    model="gpt-4", 
+    model="gpt-3.5-turbo", 
     temperature=0.0,
     max_tokens=800,
 )
