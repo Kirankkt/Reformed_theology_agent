@@ -1,10 +1,12 @@
+# app.py
+
 import os
 import sys
 import streamlit as st
 import warnings
 warnings.filterwarnings("ignore", category=SyntaxWarning)
 
-# Set environment variables from secrets
+# Set environment variables from Streamlit secrets
 if "OPENAI_API_KEY" in st.secrets:
     os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
 else:
@@ -15,6 +17,7 @@ if "SERPER_API_KEY" in st.secrets:
 else:
     st.error("Serper Dev API key not found in secrets.")
 
+# Optional: If you were using Chroma DB or related features
 os.environ["CHROMA_DB_IMPL"] = "duckdb+parquet"
 
 try:
@@ -45,8 +48,9 @@ def create_theology_crew(user_question: str):
     if not openai_api_key or not serper_api_key:
         raise ValueError("Missing API keys in environment variables.")
 
+    # Using gpt-3.5-turbo for cost efficiency and potentially faster responses
     llm = OpenAI_LLM(
-        model="gpt-3.5-turbo", # using a cheaper model for cost efficiency
+        model="gpt-3.5-turbo",
         temperature=0.0,
         max_tokens=800,
     )
@@ -83,7 +87,7 @@ def create_theology_crew(user_question: str):
             "- Avoid modern popular evangelical websites.\n"
         ),
         expected_output="A magisterial, scholastic response from classical Reformed sources.",
-        output_file="",  # Just an empty string to avoid the NoneType error
+        output_file="",  # Use empty string instead of None
         agent=theology_agent,
     )
 
@@ -112,7 +116,7 @@ def main():
 
     st.write("Ask a question about Reformed theology and receive a response grounded in classical Reformed scholasticism.")
 
-    user_question = st.text_input("Your Theological Question:", value="What is supralapsarianism?")
+    user_question = st.text_input("Your Theological Question:", value="What does the Bible teach about justification by faith?")
     if st.button("Ask"):
         with st.spinner("Consulting classical Reformed scholastic sources..."):
             results = run_theology_search(user_question)
@@ -121,22 +125,28 @@ def main():
             with st.expander("📄 Raw CrewOutput"):
                 st.write(results)
 
-            if results and results.tasks:
-                # Try common attributes to find the final answer text
-                task_output = results.tasks[0]
-                final_answer = None
-                for attr in ['raw', 'result', 'output', 'response']:
-                    if hasattr(task_output, attr):
-                        final_answer = getattr(task_output, attr)
-                        if final_answer:
-                            break
+            if results:
+                # Attempt to access tasks_output instead of tasks
+                tasks_output = getattr(results, 'tasks_output', None)
+                if tasks_output and len(tasks_output) > 0:
+                    first_task_output = tasks_output[0]
 
-                if final_answer:
-                    st.success("✅ Response generated!")
-                    # Display the final answer directly as text
-                    st.write(final_answer)
+                    # Try common attributes to find the final textual answer
+                    final_answer = None
+                    for attr in ['raw', 'result', 'output', 'response']:
+                        if hasattr(first_task_output, attr):
+                            candidate = getattr(first_task_output, attr)
+                            if candidate and isinstance(candidate, str) and candidate.strip():
+                                final_answer = candidate.strip()
+                                break
+
+                    if final_answer:
+                        st.success("✅ Response generated!")
+                        st.write(final_answer)
+                    else:
+                        st.warning("⚠️ No recognizable textual output found in the task. Check the raw output above.")
                 else:
-                    st.warning("⚠️ No recognizable output found in the task. Check the raw output above.")
+                    st.warning("⚠️ No tasks_output available. Check the raw output above.")
             else:
                 st.warning("⚠️ No response generated. Please try again or refine your question.")
 
