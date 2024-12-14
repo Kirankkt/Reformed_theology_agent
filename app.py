@@ -82,7 +82,7 @@ def create_theology_crew(user_question: str):
             "Requirements:\n"
             "- Strictly classical Reformed scholastic perspective.\n"
             "- Include quotes from classical theologians (Calvin, Turretin, Bavinck, Hodge, Warfield).\n"
-            "- Provide Greek/Hebrew insights as relevant.\n"
+            "- Provide Greek/Hebrew word tranlations and  insights as relevant to teh context.COnsider including this almost always\n"
             "- Provide references to classical and magisterial resources (e.g., PRDL).\n"
             "- Avoid modern popular evangelical websites.\n"
         ),
