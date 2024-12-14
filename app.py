@@ -127,12 +127,15 @@ def main():
     if st.button("Ask"):
         with st.spinner("Consulting classical Reformed scholastic sources..."):
             results = run_theology_search(user_question)
-            if results is not None and len(results) > 0:
+            if results:
                 st.success("✅ Response generated!")
-                with st.expander("📜 Scholastic Response"):
-                    st.write(results[0])
+                # Check if there's an attribute like 'final' or 'output'
+                # This depends on crewai's documentation.
+                # Let's assume results is a CrewOutput with a `final` attribute:
+                st.write(results.final)
             else:
                 st.warning("⚠️ No response generated. Please try again or refine your question.")
+
 
 if __name__ == "__main__":
     main()
