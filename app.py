@@ -43,27 +43,20 @@ logging.basicConfig(
 )
 
 def create_theology_crew(user_question: str):
-    """
-    Create a theology-focused Crew that uses a Reformed Scholastic Theology agent
-    and responds to the user's question following the strict scholarly guidelines.
-    """
     openai_api_key = os.environ.get('OPENAI_API_KEY')
     serper_api_key = os.environ.get('SERPER_API_KEY')
 
     if not openai_api_key or not serper_api_key:
         raise ValueError("Missing API keys in environment variables.")
 
-    # Create the LLM
     llm = OpenAI_LLM(
-        model="gpt-3.5-turbo",
+        model="gpt-4",
         temperature=0.0,
         max_tokens=800,
     )
 
-    # Create the search tool
     search_tool = SerperDevTool(api_key=serper_api_key)
 
-    # Define the theology agent with strict Reformed Scholastic constraints
     theology_agent = Agent(
         llm=llm,
         role="Reformed Scholastic Theology Assistant",
@@ -94,7 +87,8 @@ def create_theology_crew(user_question: str):
             "- Avoid modern popular evangelical websites.\n"
         ),
         expected_output="A magisterial, scholastic response from classical Reformed sources.",
-        output_file=None,
+        # Instead of None, we set output_file to an empty string
+        output_file="",
         agent=theology_agent,
     )
 
@@ -105,6 +99,7 @@ def create_theology_crew(user_question: str):
     )
 
     return crew
+
 
 def run_theology_search(user_question: str):
     """
